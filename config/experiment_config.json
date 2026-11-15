@@ -1,0 +1,125 @@
+{
+    "experiment_name": "ps1_bert_cnn",
+    "description": "Within-project story point estimation on TAWOS using frozen BERT token embeddings and a 1D CNN regressor.",
+
+    "seed": 42,
+
+    "hyperparameters": {
+        "seed": 42,
+        "model_name": "bert-base-uncased",
+        "max_length": 128,
+        "embed_batch_size": 64,
+        "train_batch_size": 32,
+        "epochs": 20,
+        "learning_rate": 0.001,
+        "weight_decay": 0.0001,
+        "patience": 4,
+        "n_folds": 5,
+        "cnn_channels": [768, 256, 128, 64],
+        "kernel_size": 3,
+        "dropout": 0.3
+    },
+
+    "data": {
+        "raw_parquet": "output/TAWOS.parquet",
+        "kaggle_raw_parquet": "/kaggle/input/datasets/ayaansajidnalakath/tawos-cleaned/TAWOS.parquet",
+        "labelled_parquet": "TAWOS_labelled.parquet",
+        "cleaned_parquet": "TAWOS_cleaned_labelled.parquet",
+        "target_column": "Story_Point",
+        "id_column": "Issue_ID",
+        "group_column": "Project_Name",
+        "title_column": "Title",
+        "description_column": "Description_Text",
+        "text_column": "Issue_Text",
+        "text_template": "Title: {Title}\nDescription: {Description_Text}",
+        "keep_only_labelled": true,
+        "drop_rows_when_title_and_description_both_empty": true,
+        "excluded_issue_keys": ["DATACASS-228", "JSWSERVER-10638", "JSWCLOUD-10638"],
+        "excluded_issue_keys_reason": "Story point values >= 100 identified as suspicious during inspection.",
+        "deduplicate": {
+            "enabled": true,
+            "subset": ["Project_Name", "Title", "Description_Text"],
+            "keep": "first"
+        }
+    },
+
+    "split": {
+        "strategy": "within_project",
+        "num_projects": 39,
+        "test_size": 0.20,
+        "shuffle": true,
+        "random_state": 42,
+        "cross_validation": {
+            "applied_to": "80% development set only",
+            "n_splits": 5,
+            "shuffle": true,
+            "random_state": 42
+        }
+    },
+
+    "embedding": {
+        "model_name": "bert-base-uncased",
+        "frozen": true,
+        "representation": "token_level_last_hidden_state",
+        "output_shape_per_issue": [128, 768],
+        "max_length": 128,
+        "padding": "max_length",
+        "truncation": true,
+        "batch_size": 64,
+        "mixed_precision_autocast": true,
+        "storage_dtype": "float16",
+        "fusion": {
+            "enabled": false,
+            "note": "Not applicable: a single BERT embedding source is used on the combined title + description text. No embedding fusion is performed."
+        }
+    },
+
+    "model": {
+        "architecture": "StoryPointCNN1D",
+        "input": "(batch, seq_len=128, embed_dim=768), permuted to (batch, 768, 128) for Conv1d",
+        "conv_blocks": [
+            {"in_channels": 768, "out_channels": 256, "kernel_size": 3, "padding": 1, "activation": "ReLU", "pool": "MaxPool1d(2)"},
+            {"in_channels": 256, "out_channels": 128, "kernel_size": 3, "padding": 1, "activation": "ReLU", "pool": "MaxPool1d(2)"},
+            {"in_channels": 128, "out_channels": 64, "kernel_size": 3, "padding": 1, "activation": "ReLU", "pool": "AdaptiveMaxPool1d(1)"}
+        ],
+        "regressor": {"flatten": true, "dropout": 0.3, "linear": [64, 1]},
+        "clip_negative_predictions_to_zero": true
+    },
+
+    "training": {
+        "loss": "L1Loss",
+        "optimizer": "AdamW",
+        "learning_rate": 0.001,
+        "weight_decay": 0.0001,
+        "batch_size": 32,
+        "epochs": 20,
+        "early_stopping": {
+            "enabled_in_cross_validation": true,
+            "monitor": "validation_MAE",
+            "patience": 4,
+            "restore_best_weights": true
+        },
+        "final_model": {
+            "trained_on": "full 80% development set",
+            "early_stopping": false,
+            "epochs": 20
+        },
+        "deterministic": {
+            "cudnn_deterministic": true,
+            "cudnn_benchmark": false
+        }
+    },
+
+    "evaluation": {
+        "metrics": ["MAE", "MdAE"],
+        "reported_for": ["5-fold CV on development set", "held-out 20% test set"],
+        "aggregate_across_projects": ["mean", "median"]
+    },
+
+    "outputs": {
+        "cv_fold_details_csv": "ps1_bert_cnn_5fold_details.csv",
+        "summary_results_csv": "ps1_bert_cnn_summary_results.csv",
+        "config_json": "ps1_experiment_config.json",
+        "results_plot": "ps1_bert_cnn_results_plot.png"
+    }
+}

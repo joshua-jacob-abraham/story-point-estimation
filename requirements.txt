@@ -1,0 +1,13 @@
+# Data preparation (MySQL -> Parquet)
+pandas
+pyarrow
+sqlalchemy
+pymysql
+
+# Experiments (BERT embeddings + 1D CNN)
+numpy
+scikit-learn
+torch
+transformers
+matplotlib
+jupyter
